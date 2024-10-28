@@ -48,6 +48,8 @@ int get_listener_socket(void)
             continue;
         }
 
+        setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
+
         if (bind(listener, p->ai_addr, p->ai_addrlen) == -1) {
             close(listener);
             perror("listener: bind");
@@ -74,7 +76,7 @@ void add_to_pfds(struct pollfd *pfds[], int newfd, int *fd_count, int *fd_size)
         *fd_size *= 2; // double the size
         *pfds = realloc(*pfds, sizeof (**pfds) * (*fd_size));
     }
-    (*pfds)[*fd_count].fd = new_fd;
+    (*pfds)[*fd_count].fd = newfd;
     (*pfds)[*fd_count].events = POLLIN;
 
     (*fd_count)++;
@@ -92,7 +94,7 @@ int main()
 {
     int listener; // listener socket
 
-    int new fd; // Newly accept()ed socket descriptor
+    int newfd; // Newly accept()ed socket descriptor
     struct sockaddr_storage remoteaddr; // Client address
     socklen_t addrlen;
 
@@ -102,7 +104,7 @@ int main()
 
     // Start off with room for 5 connections
     int fd_count = 0;
-    fd_size = 10;
+    int fd_size = 10;
     struct pollfd *pfds = malloc(sizeof *pfds * fd_size);
     listener = get_listener_socket();
 
@@ -112,7 +114,7 @@ int main()
     }
 
     // Add the listener to the set
-    add_topfds(&pfds, listener, &fd_count, &fd_size);
+    add_to_pfds(&pfds, listener, &fd_count, &fd_size);
 
     // Main loop
     for (;;) {
@@ -122,7 +124,7 @@ int main()
             perror("poll");
             exit(1);
         }
-        
+
         // look through connections and look for data to read
         for (int i = 0; i < fd_count; i++) {
 
@@ -131,8 +133,8 @@ int main()
 
                     addrlen = sizeof remoteaddr;
                     newfd = accept(listener,
-                        (struct sockaddr *)&remoteaddr,
-                        &addrlen);
+                                   (struct sockaddr *)&remoteaddr,
+                                   &addrlen);
                     if (newfd == -1)
                         perror("accept");
                     else {
@@ -140,16 +142,38 @@ int main()
 
                         printf("pollserver: new connection from %s on"
                                "socket %d\n", inet_ntop(remoteaddr.ss_family,
-                                                        get_inaddr((struct sockaddr *)&remoteaddr),
+                                                        get_in_addr((struct sockaddr *)&remoteaddr),
                                                         remoteIP, INET6_ADDRSTRLEN),
-                                newfd);
+                               newfd);
                     }
                 } else {
                     // if not listener we are just a regular client
-                }
-            }
-        }
+                    int nbytes = recv(pfds[i].fd, buf, sizeof buf, 0);
 
-    }
+                    int sender_fd = pfds[i].fd;
 
-}
+                    if (nbytes <= 0) {
+                        if (nbytes == 0) 
+                            printf("pollsever: socket %d hung up\n", sender_fd);
+                        else
+                            perror("recv");
+                        close(pfds[i].fd);
+
+                        del_from_pfds(pfds, i, &fd_count);
+                    } else {
+                        for(int j = 0; j < fd_count; j++) {
+                            int dest_fd = pfds[j].fd;
+                            if (dest_fd != listener && dest_fd != listener) {
+                                if (send(dest_fd, buf, nbytes, 0) == -1)
+                                    perror("send");
+                            }
+                        }
+                    } 
+                } 
+            } 
+        } 
+    } 
+    return 0;
+} 
+
+
