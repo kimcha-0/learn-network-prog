@@ -138,11 +138,10 @@ int main()
                     else {
                         add_to_pfds(&pfds, newfd, &fd_count, &fd_size);
 
-                        printf("pollserver: new connection from %s on"
-                               "socket %d\n", inet_ntop(remoteaddr.ss_family,
-                                                        get_inaddr((struct sockaddr *)&remoteaddr),
-                                                        remoteIP, INET6_ADDRSTRLEN),
-                                newfd);
+                        printf("pollserver: new connection from %s on" "socket %d\n", 
+                               inet_ntop(remoteaddr.ss_family, get_inaddr(
+                               (struct sockaddr *)&remoteaddr),remoteIP, INET6_ADDRSTRLEN), 
+                               newfd);
                     }
                 } else {
                     // if not listener we are just a regular client
