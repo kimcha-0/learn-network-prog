@@ -26,7 +26,7 @@ int main(void)
     int fdmax;
 
     int listener;
-    int newfd
+    int newfd;
     struct sockaddr_storage remoteaddr;
     socklen_t addrlen;
 
@@ -48,7 +48,7 @@ int main(void)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
     if ((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
-        fprintf(stderr, 'selectserver: %s\n', gai_strerror(rv));
+        fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
         exit(1);
     }
 
@@ -60,8 +60,8 @@ int main(void)
 
         setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int));
 
-        if ((bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
-            perror("bind";)
+        if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
+            perror("bind");
             close(listener);
             continue;
         }
@@ -73,7 +73,7 @@ int main(void)
         fprintf(stderr, "selectserver: failed to bind\n");
     }
 
-    freaddrinfo(ai);
+    freeaddrinfo(ai);
 
     if ((listen(listener, 10) == -1)) {
         perror("listen");
@@ -83,6 +83,53 @@ int main(void)
     FD_SET(listener, &master);
 
     fdmax = listener;
-    
 
+    for (;;) {
+        read_fds = master;
+        if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+            perror("select");
+            exit(1);
+        }
+
+        for (i = 0; i <= fdmax; i++) {
+            // handle reads and writes by checking each set
+            if (FD_ISSET(i, &read_fds)) {
+                if (i == listener) {
+                    addrlen = sizeof remoteaddr;
+                    newfd = accept(listener, (struct sockaddr *)&remoteaddr, &addrlen);
+                    if (newfd == -1)
+                        perror("accept");
+                    else {
+                        FD_SET(newfd, &master);
+                        if (newfd > fdmax) 
+                            fdmax = newfd;
+                        printf("selectserver: new connection from %s on " "socket %d\n",
+                               inet_ntop(remoteaddr.ss_family,
+                                         get_in_addr((struct sockaddr *)&remoteaddr),
+                                         remoteIP, INET6_ADDRSTRLEN),
+                               newfd);
+                    }
+                } else {
+                    if ((nbytes == recv(i, buf, sizeof buf, 0)) <= 0) {
+                        if (nbytes == 0)
+                            printf("selectserver: socket %d hung up\n", i);
+                        else
+                            perror("recv");
+                        close(i);
+                        FD_CLR(i, &read_fds);
+                    } else {
+                        for (j = 0; j <= fdmax; j++) {
+                            if (FD_ISSET(j, &master)) {
+                                if (j != listener && j != i) {
+                                    if (send(j, buf, nbytes, 0) == -1) 
+                                        perror("send");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return 0;
 }
